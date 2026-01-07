@@ -42,32 +42,14 @@ def _json_from_command(cmd):
 
 def fetch_builder_resources() -> tuple[int, int]:
     """Return (cpus, memory_bytes) from container status JSON."""
-    # Spec calls for container system status --json; fall back to builder status if needed.
-    commands = [
-        ["container", "system", "status", "--json"],
-        ["container", "builder", "status", "--json"],
-    ]
-    last_error = None
-    for index, cmd in enumerate(commands):
-        try:
-            data = _json_from_command(cmd)
-        except subprocess.CalledProcessError as exc:
-            last_error = exc
-            continue
-        except json.JSONDecodeError as exc:
-            last_error = exc
-            continue
-        resources = (
-            data.get("configuration", {})
-            .get("resources", {})
-        )
-        cpus = resources.get("cpus")
-        memory_bytes = resources.get("memoryInBytes")
-        if cpus is not None and memory_bytes is not None:
-            if index == 1:
-                print("==> Falling back to 'container builder status --json' for resource info")
-            return int(cpus), int(memory_bytes)
-    raise RuntimeError("Unable to determine builder resources") from last_error
+    data = _json_from_command(["container", "builder", "status", "--format", "json"])
+    data = data[0]
+    resources = data.get("configuration", {}).get("resources", {})
+    cpus = resources.get("cpus")
+    memory_bytes = resources.get("memoryInBytes")
+    if cpus is not None and memory_bytes is not None:
+        return int(cpus), int(memory_bytes)
+    raise RuntimeError("Unable to determine builder resources")
 
 
 def host_limits() -> tuple[int, int]:
@@ -77,12 +59,12 @@ def host_limits() -> tuple[int, int]:
 
 
 def format_gib(bytes_value: int) -> str:
-    return f"{bytes_value / (1024 ** 3):.1f} GiB"
+    return f"{bytes_value / (1024**3):.1f} GiB"
 
 
 def format_memory_flag(bytes_value: int) -> str:
-    gib = 1024 ** 3
-    mib = 1024 ** 2
+    gib = 1024**3
+    mib = 1024**2
     kib = 1024
     if bytes_value % gib == 0:
         return f"{bytes_value // gib}G"
@@ -105,9 +87,7 @@ def ensure_resources(requirement_disabled: bool) -> None:
     issues: list[str] = []
 
     if cpus < MIN_CPUS:
-        issues.append(
-            f"- Allocated CPUs: {cpus} (minimum required: {MIN_CPUS})"
-        )
+        issues.append(f"- Allocated CPUs: {cpus} (minimum required: {MIN_CPUS})")
     if memory_bytes < MIN_MEMORY_BYTES:
         issues.append(
             f"- Allocated memory: {format_gib(memory_bytes)} (minimum required: {format_gib(MIN_MEMORY_BYTES)})"
